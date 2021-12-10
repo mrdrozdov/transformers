@@ -448,30 +448,51 @@ def main():
     def preprocess_validation_function(examples):
         inputs, targets = preprocess_squad_batch(examples, question_column, context_column, answer_column)
 
-        model_inputs = tokenizer(
-            inputs,
-            max_length=max_seq_length,
-            padding=padding,
-            truncation=True,
-            return_overflowing_tokens=True,
-            return_offsets_mapping=True,
-        )
-        # Setup the tokenizer for targets
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(targets, max_length=max_answer_length, padding=padding, truncation=True)
+        ALLOW_OVERFLOW = False
 
-        # Since one example might give us several features if it has a long context, we need a map from a feature to
-        # its corresponding example. This key gives us just that.
-        sample_mapping = model_inputs.pop("overflow_to_sample_mapping")
+        if ALLOW_OVERFLOW: # WARNING: What are the performance implications here?
 
-        # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
-        # corresponding example_id and we will store the offset mappings.
-        model_inputs["example_id"] = []
+            model_inputs = tokenizer(
+                inputs,
+                max_length=max_seq_length,
+                padding=padding,
+                truncation=True,
+                return_overflowing_tokens=True,
+                return_offsets_mapping=True,
+            )
+            # Setup the tokenizer for targets
+            with tokenizer.as_target_tokenizer():
+                labels = tokenizer(targets, max_length=max_answer_length, padding=padding, truncation=True)
 
-        for i in range(len(model_inputs["input_ids"])):
-            # One example can give several spans, this is the index of the example containing this span of text.
-            sample_index = sample_mapping[i]
-            model_inputs["example_id"].append(examples["id"][sample_index])
+            # Since one example might give us several features if it has a long context, we need a map from a feature to
+            # its corresponding example. This key gives us just that.
+            sample_mapping = model_inputs.pop("overflow_to_sample_mapping")
+
+            # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
+            # corresponding example_id and we will store the offset mappings.
+            model_inputs["example_id"] = []
+
+            for i in range(len(model_inputs["input_ids"])):
+                # One example can give several spans, this is the index of the example containing this span of text.
+                sample_index = sample_mapping[i]
+                model_inputs["example_id"].append(examples["id"][sample_index])
+
+        else:
+
+            model_inputs = tokenizer(
+                inputs,
+                max_length=max_seq_length,
+                padding=padding,
+                truncation=True,
+            )
+            # Setup the tokenizer for targets
+            with tokenizer.as_target_tokenizer():
+                labels = tokenizer(targets, max_length=max_answer_length, padding=padding, truncation=True)
+
+            model_inputs["example_id"] = []
+
+            for i in range(len(model_inputs["input_ids"])):
+                model_inputs["example_id"].append(examples["id"][i])
 
         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
         # padding in the loss.
